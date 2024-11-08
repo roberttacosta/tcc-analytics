@@ -1,0 +1,12 @@
+pandas
+pymongo
+tqdm
+matplotlib
+seaborn
+openpyxl
+pymongoarrow
+scipy
+dash
+plotly
+streamlit
+redis
