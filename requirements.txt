@@ -10,3 +10,5 @@ dash
 plotly
 streamlit
 redis
+web3
+eth-abi

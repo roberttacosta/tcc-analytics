@@ -48,14 +48,18 @@ def analyze_flash_loan_frequency(use_cache=True, separate_by_network=True):
 
 
 def extract_day_hour(use_cache=True):
-    cache_key = 'flash_loan_frequency_day_hour'
+    cache_key_polygon = 'flash_loan_frequency_day_hour_polygon'
+    cache_key_ethereum = 'flash_loan_frequency_day_hour_ethereum'
 
     if use_cache:
-        cached_data = get_from_cache(cache_key)
-        if cached_data is not None and cached_data:
-            logging.info("Dados carregados do cache Redis.")
-            frequency_data = pd.read_json(cached_data)
-            return frequency_data
+        cached_data_polygon = get_from_cache(cache_key_polygon)
+        cached_data_ethereum = get_from_cache(cache_key_ethereum)
+
+        if cached_data_polygon is not None and cached_data_ethereum is not None:
+            logging.info("Dados carregados do cache Redis para Polygon e Ethereum.")
+            frequency_data_polygon = pd.read_json(cached_data_polygon)
+            frequency_data_ethereum = pd.read_json(cached_data_ethereum)
+            return frequency_data_polygon, frequency_data_ethereum
 
     # Carrega todos os dados das transações
     flash_loans = load_all_transactions(function_name=['flashLoan', 'flashLoanSimple'])
@@ -63,10 +67,10 @@ def extract_day_hour(use_cache=True):
     # Log the columns of the DataFrame
     logging.info(f"Columns in flash_loans DataFrame: {flash_loans.columns}")
 
-    # Check if 'timestamp' column exists
-    if 'timestamp' not in flash_loans.columns:
-        logging.error("Column 'timestamp' not found in the DataFrame.")
-        return None
+    # Check if 'timestamp' and 'network' columns exist
+    if 'timestamp' not in flash_loans.columns or 'network' not in flash_loans.columns:
+        logging.error("Column 'timestamp' or 'network' not found in the DataFrame.")
+        return None, None
 
     flash_loans['timestamp'] = pd.to_datetime(flash_loans['timestamp'], unit='s')
 
@@ -76,24 +80,27 @@ def extract_day_hour(use_cache=True):
     frequency_data['day_of_week'] = frequency_data['timestamp'].dt.day_name()
     frequency_data['hour'] = frequency_data['timestamp'].dt.floor('30T').dt.hour
 
-    # Agrupar por dia da semana e hora arredondada, contando as ocorrências
-    grouped_data = frequency_data.groupby(['day_of_week', 'hour']).size().reset_index(name='count')
+    # Agrupar por rede (network), dia da semana e hora arredondada, contando as ocorrências
+    grouped_data = frequency_data.groupby(['network', 'day_of_week', 'hour']).size().reset_index(name='count')
 
-    # Log the grouped data (first 5 rows)
-    logging.info(f"Grouped data (first 5 rows):\n{grouped_data.head()}")
+    # Dividir os dados por rede
+    polygon_data = grouped_data[grouped_data['network'] == 'polygon']
+    ethereum_data = grouped_data[grouped_data['network'] == 'ethereum']
 
-    # Converte o DataFrame para JSON
-    grouped_data_json = grouped_data.to_json(orient='records')
+    # Converte os DataFrames para JSON
+    polygon_data_json = polygon_data.to_json(orient='records')
+    ethereum_data_json = ethereum_data.to_json(orient='records')
 
-    # Salva o JSON no cache
-    save_to_cache(cache_key, grouped_data_json)
-    logging.info(f"Dados salvos no cache Redis com a chave: {cache_key}")
+    # Salva os JSONs no cache
+    save_to_cache(cache_key_polygon, polygon_data_json)
+    save_to_cache(cache_key_ethereum, ethereum_data_json)
+    logging.info(f"Dados salvos no cache Redis com as chaves: {cache_key_polygon} e {cache_key_ethereum}")
 
-    return grouped_data
+    return polygon_data, ethereum_data
 
 
 def group_by_day_hour():
-    frequency_data = extract_day_hour()
+    frequency_data_polygon, frequency_data_ethereum = extract_day_hour()
 
     # Mapping of English day names to Portuguese
     day_name_mapping = {
@@ -106,18 +113,17 @@ def group_by_day_hour():
         'Sunday': 'Domingo'
     }
 
-    # Apply the mapping to the day_of_week column
-    frequency_data['day_of_week'] = frequency_data['day_of_week'].map(day_name_mapping)
+    # Função auxiliar para preparar os dados
+    def prepare_frequency_data(frequency_data):
+        frequency_data['day_of_week'] = frequency_data['day_of_week'].map(day_name_mapping)
+        days_of_week_order = ['Sábado', 'Sexta-feira', 'Quinta-feira', 'Quarta-feira', 'Terça-feira', 'Segunda-feira', 'Domingo']
+        frequency_data['day_of_week'] = pd.Categorical(frequency_data['day_of_week'], categories=days_of_week_order, ordered=True)
+        frequency_data = frequency_data.sort_values(['day_of_week', 'hour'])
+        pivot_data = frequency_data.pivot_table(index='day_of_week', columns='hour', values='count', fill_value=0)
+        pivot_data = pivot_data.reindex(columns=range(24), fill_value=0)
+        return pivot_data
 
-    # Order the days of the week in Portuguese starting from Sunday
-    days_of_week_order = ['Sábado', 'Sexta-feira', 'Quinta-feira', 'Quarta-feira', 'Terça-feira', 'Segunda-feira', 'Domingo']
-    frequency_data['day_of_week'] = pd.Categorical(frequency_data['day_of_week'], categories=days_of_week_order, ordered=True)
-    frequency_data = frequency_data.sort_values(['day_of_week', 'hour'])
+    pivot_data_polygon = prepare_frequency_data(frequency_data_polygon)
+    pivot_data_ethereum = prepare_frequency_data(frequency_data_ethereum)
 
-    # Pivot the data to create a table with hours as columns and days of the week as indices
-    pivot_data = frequency_data.pivot_table(index='day_of_week', columns='hour', values='count', fill_value=0)
-
-    # Ensure all hours from 0 to 23 are present as columns
-    pivot_data = pivot_data.reindex(columns=range(24), fill_value=0)
-
-    return pivot_data
+    return pivot_data_polygon, pivot_data_ethereum

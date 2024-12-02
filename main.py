@@ -4,6 +4,7 @@ from analyses.flash_loan_fee import analyze_flash_loan_fee
 from analyses.flash_loan_volume import analyze_flash_loan_volume, analyze_flash_loan_volume_all
 from analyses.flash_loan_tokens import analyze_flash_loan_tokens
 from analyses.transaction_sequence import analyze_flash_loan_wallets
+from utils.decoder_input import decode_flash_loan_transaction
 from data.data_loader import create_indexes
 from utils.helpers import save_to_cache
 import json
@@ -14,6 +15,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 def main():
     logging.info("Iniciando a análise de dados DeFi.")
     #create_indexes()
+
+    #Executar a análise das taxas de flash loans
+    logging.info("Analisando taxas de flash loans...")
+    ethereum_metrics, polygon_metrics = analyze_flash_loan_fee()
+
+    #Exibir os resultados
+    print("Métricas Ethereum:", ethereum_metrics)
+    print("Métricas Polygon:", polygon_metrics)
 
     logging.info("Analisando a frequência de flash loans...")
     extract_day_hour()
@@ -46,6 +55,10 @@ def main():
 #    analyze_transaction_sequence()
 
     logging.info("Análise concluída com sucesso.")
+
+#    analyze_and_cache_random_transactions()
+
+
 
 
 if __name__ == "__main__":

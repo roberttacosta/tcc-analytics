@@ -6,14 +6,26 @@ import plotly.graph_objects as go
 def plot_flash_loan_frequency(frequency_data, separate_by_network):
     color_discrete_map = {'polygon': 'purple', 'ethereum': 'cyan'}
     if separate_by_network:
-        fig = px.line(frequency_data, x='timestamp', y='count', color='network',
-                      title='Frequência de Flash Loans por Rede', color_discrete_map=color_discrete_map)
+        # Dividir o DataFrame em dois, um para cada rede
+        frequency_data_polygon = frequency_data[frequency_data['network'] == 'polygon']
+        frequency_data_ethereum = frequency_data[frequency_data['network'] == 'ethereum']
+
+        # Plot para Polygon
+        fig_polygon = px.line(frequency_data_polygon, x='timestamp', y='count',
+                              title='Quantidade Absoluta de Flash Loans - Polygon', color_discrete_sequence=['purple'])
+
+        # Plot para Ethereum
+        fig_ethereum = px.line(frequency_data_ethereum, x='timestamp', y='count',
+                               title='Quantidade Absoluta de Flash Loans - Ethereum', color_discrete_sequence=['cyan'])
+
+        return fig_polygon, fig_ethereum
     else:
-        fig = px.line(frequency_data, x='timestamp', y='count', title='Frequência de Flash Loans')
-    return fig
+        # Plot único sem separar por rede
+        fig = px.line(frequency_data, x='timestamp', y='count', title='Quantidade Absoluta de Flash Loans')
+        return fig, None
 
 
-def plot_day_hour_distribution(pivot_data):
+def plot_day_hour_distribution(pivot_data, title):
     # Formatar as horas
     hour_labels = [f"{hour:02d}:00" for hour in range(24)]
 
@@ -28,7 +40,7 @@ def plot_day_hour_distribution(pivot_data):
     ))
 
     fig.update_layout(
-        title="Distribuição de Flash Loans por Dia e Hora",
+        title=title,
         xaxis=dict(title="Hora", tickmode='array', tickvals=hour_labels),
         yaxis=dict(title="Dia da Semana")
     )
@@ -219,4 +231,26 @@ def plot_wallet_interactions(transactions_data, network):
                       yaxis=dict(range=[0, 6], dtick=1))
     fig.update_traces(marker=dict(line=dict(width=0.5)), textposition='inside')
 
+    return fig
+
+
+# Função para plotar os dados em forma de tabela
+def plot_flash_loan_fees(metrics_data):
+    # Criar uma tabela com as métricas de Ethereum e Polygon
+    header = ['Rede', 'Total Acumulado de Taxas Pagas (ETH/MATIC)', 'Media de Taxas Paga Por Transação (ETH/MATIC)', 'Total Acumulado de Taxas Pagas (USD)', 'Media de Taxas Paga Por Transação (USD)']
+    values = [
+        list(metrics_data.keys()),
+        [metrics_data[network]['total_fee_paid'] for network in metrics_data],
+        [metrics_data[network]['average_fee_paid'] for network in metrics_data],
+        [f"$ {metrics_data[network]['total_fee_paid_usd']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') for network in metrics_data],
+        [f"$ {metrics_data[network]['average_fee_paid_usd']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') for network in metrics_data]
+    ]
+
+    # Criar o gráfico de tabela
+    fig = go.Figure(data=[go.Table(
+        header=dict(values=header, fill_color='paleturquoise', align='left'),
+        cells=dict(values=values, fill_color='lavender', align='left')
+    )])
+
+    fig.update_layout(title='Taxas Flash Loans (Total e Média por Transação)')
     return fig
